@@ -1,4 +1,8 @@
-# Setup
+# Dev Env WADM Deployment
+
+The purpose of this example was to test if it is possible to deploy wadm in a dev container env. IT WAS! WOOOO
+
+## Setup
 
 For local dev will be leveraging router for dns bindings, but there is potential to use dnsmasq if configured correctly.
 
