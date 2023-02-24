@@ -1,0 +1,15 @@
+http:
+  routers:
+    traefik:
+      rule: "Host(`traefik.jammin.dev`)"
+      service: "api@internal"
+      tls:
+        domains:
+          - main: "jammin.dev"
+            sans:
+              - "*.jammin.dev"
+
+tls:
+  certificates:
+    - certFile: "/etc/certs/jammin.dev+1.pem"
+      keyFile: "/etc/certs/jammin.dev+1-key.pem"

@@ -1,0 +1,37 @@
+global:
+  sendAnonymousUsage: false
+
+api:
+  dashboard: true
+  insecure: true
+
+providers:
+  docker:
+    endpoint: unix:///var/run/docker.sock
+    watch: true
+    exposedByDefault: false
+    network: traefik-net
+
+  file:
+    filename: /etc/traefik/config.yaml
+    watch: true
+
+log:
+  level: DEBUG
+  format: common
+
+accessLog:
+  filePath: /logs/access.log
+  bufferingSize: 20
+
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
