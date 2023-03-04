@@ -1,0 +1,207 @@
+name: Release Provider to GHCR
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "*_provider-v[0-9]+.[0-9]+.[0-9]+"
+env:
+  # For the release action, you'll have to set the following variables
+  WASH_ISSUER_KEY: ${{ secrets.WASH_ISSUER_KEY }}
+  WASH_SUBJECT_KEY: ${{ secrets.WASH_SUBJECT_KEY }}
+  WASMCLOUD_PAT: ${{ secrets.WASMCLOUD_PAT }}
+  CARGO_REGISTRIES_JAMMINMUSIC_CRATES_INDEX: ${{ secrets.CARGO_REGISTRIES_JAMMINMUSIC_CRATES_INDEX }}
+
+jobs:
+  set_variables:
+    runs-on: ubuntu-latest
+    outputs:
+      provider_version_output: ${{ steps.set_provider_version.outputs.provider_version }}
+      feature_name_output: ${{ steps.set_feature_name.outputs.feature_name }}
+      working_dir_output: ${{ steps.set_working_dir.outputs.working_dir }}
+      verification_output: ${{ steps.set_verification.outputs.verification }}
+    steps:
+      - name: Checkout (GitHub)
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+      - name: Extract Feature Name from Tag
+        run: |
+          tag=${GITHUB_REF#refs/tags/*_provider-v*/}
+          tag2=${tag%_*}
+          echo "FEATURE_NAME=${tag2##*\/}" >> $GITHUB_ENV
+      - name: Extract Provider Version from Tag
+        run: |
+          tag=${GITHUB_REF#refs/tags/*-v*/}
+          version=`expr match "$tag" '.*\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\)'` 
+          echo "PROVIDER_VERSION=${version}" >> $GITHUB_ENV
+      - name: Extract Provider Version from Cargo.toml
+        run: |
+          version=`cargo metadata --no-deps --format-version 1 | jq -r '.packages[].version')"`
+          echo "CARGO_VERSION=${version}" >> $GITHUB_ENV
+      - name: Set Working Directory
+        run: |
+          echo "WORKING_DIR=$PWD/$FEATURE_NAME/${FEATURE_NAME}_provider" >> $GITHUB_ENV
+      - name: Build Subject Key Secret String
+        run: |
+          secret_prefix='WASH_'
+          secret_unique=$(echo "${FEATURE_NAME}_provider" | tr 'a-z' 'A-Z')
+          secret_suffix='_KEY'
+          secret=${secret_prefix}${secret_unique}${secret_suffix}
+          echo "SECRET_STRING=$secret" >> $GITHUB_ENV
+             # Once you've written unit tests for your actor, you can uncomment
+      - name: Output Provider Version
+        id: set_provider_version
+        run: echo "provider_version=$PROVIDER_VERSION" >> $GITHUB_OUTPUT
+      - name: Output Feature Name
+        id: set_feature_name
+        run: echo "feature_name=$FEATURE_NAME" >> $GITHUB_OUTPUT
+      - name: Output Working Directory
+        id: set_working_dir
+        run: echo "working_dir=$WORKING_DIR" >> $GITHUB_OUTPUT
+      - name: Output Wash Subject Key
+        id: set_subject_key
+        run: echo "subject_key=$SECRET_STRING" >> $GITHUB_OUTPUT
+      - name: Output Version Verification Boolean
+        id: set_verification
+        run: |
+          if [ "$PROVIDER_VERSION" = "$CARGO_VERSION" ] ; then
+            echo "verification=true" >> $GITHUB_OUTPUT
+          else
+            echo "verification=false" >> $GITHUB_OUTPUT
+            echo "::error title=VerificationFailed::cargo.toml Version Does Not Match Tag Version"
+          fi
+
+  # Using a matrix, build for 6 supported targets for wasmCloud providers
+  build_provider_targets:
+    needs: [set_variables]
+    if: needs.set_variables.outputs.verification_output == 'true'
+    runs-on: ubuntu-20.04
+    env:
+      WASH_SUBJECT_KEY: ${{ secrets[needs.set_variables.outputs.subject_key_output] }}
+      WORKING_DIR: ${{ needs.set_variables.outputs.working_dir_output }}
+      FEATURE_NAME: ${{ needs.set_variables.outputs.feature_name_output }}
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - x86_64-apple-darwin
+          - aarch64-unknown-linux-gnu
+          - aarch64-apple-darwin
+          - armv7-unknown-linux-gnueabihf
+          - x86_64-pc-windows-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.ref }}
+      - uses: wasmcloud/common-actions/install-cross@main
+      - name: Build Native Executable
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          cross build --release --target ${{ matrix.target }}
+      - name: Upload Executable to GH Actions
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            ${{ env.WORKING_DIR }}/target/${{ matrix.target }}/release/${{ env.FEATURE_NAME }}_provider
+            ${{ env.WORKING_DIR }}/target/${{ matrix.target }}/release/${{ env.FEATURE_NAME }}_provider.exe
+
+  assemble_provider_archive:
+    needs: [set_variables, build_provider_targets]
+    runs-on: ubuntu-20.04
+    env:
+      WASH_SUBJECT_KEY: ${{ secrets[needs.set_variables.outputs.subject_key_output] }}
+      WORKING_DIR: ${{ needs.set_variables.outputs.working_dir_output }}
+      FEATURE_NAME: ${{ needs.set_variables.outputs.feature_name_output }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: wasmcloud/common-actions/install-wash@main
+      # Downloads all provider artifacts
+      - uses: actions/download-artifact@v3
+        with:
+          path: ${{ env.WORKING_DIR }}
+      - name: Create Provider Archive
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          mkdir -p target/release
+          mv x86_64-unknown-linux-gnu/${{ env.FEATURE_NAME }}_provider target/release/
+          make par
+      # Debug Step
+      # - name: List Directory Contents
+      #   working-directory: ${{ env.WORKING_DIR }}
+      #   run: |
+      #     echo "Recursively List Root Directory"
+      #     ls -R
+      - name: Fill Provider Archive with Binaries
+        working-directory: ${{ env.WORKING_DIR }}
+        run: |
+          wash par insert --arch x86_64-macos   --binary x86_64-apple-darwin/${{ env.FEATURE_NAME }}_provider build/${{ env.FEATURE_NAME }}_provider.par.gz
+          wash par insert --arch aarch64-linux  --binary aarch64-unknown-linux-gnu/${{ env.FEATURE_NAME }}_provider build/${{ env.FEATURE_NAME }}_provider.par.gz
+          wash par insert --arch aarch64-macos  --binary aarch64-apple-darwin/${{ env.FEATURE_NAME }}_provider build/${{ env.FEATURE_NAME }}_provider.par.gz
+          wash par insert --arch armv7-linux    --binary armv7-unknown-linux-gnueabihf/${{ env.FEATURE_NAME }}_provider build/${{ env.FEATURE_NAME }}_provider.par.gz
+          wash par insert --arch x86_64-windows --binary x86_64-pc-windows-gnu/${{ env.FEATURE_NAME }}_provider.exe build/${{ env.FEATURE_NAME }}_provider.par.gz
+      - name: Upload Provider Archive to GH Actions
+        uses: actions/upload-artifact@v3
+        with:
+          name: provider-archive
+          path: ${{ env.WORKING_DIR }}/build/${{ env.FEATURE_NAME }}_provider.par.gz
+
+  github_release:
+    needs: [set_variables, assemble_provider_archive]
+    env:
+      WASH_SUBJECT_KEY: ${{ secrets[needs.set_variables.outputs.subject_key_output] }}
+      WORKING_DIR: ${{ needs.set_variables.outputs.working_dir_output }}
+      FEATURE_NAME: ${{ needs.set_variables.outputs.feature_name_output }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: wasmcloud/common-actions/install-wash@main
+      - name: Download provider archive
+        uses: actions/download-artifact@v3
+        with:
+          name: provider-archive
+          path: ${{ env.WORKING_DIR }}/build
+      - name: Create release text
+        run: |
+          export claims=$(wash par inspect ${{ env.WORKING_DIR }}/build/*.par.gz)
+          echo "Your provider can be accessed at \`ghcr.io/${{ github.REPOSITORY }}:${{ env.PROVIDER_VERSION }}\`" >> release.txt
+          echo "Claims information:" >> release.txt
+          echo "\`\`\`" >> release.txt
+          echo "$claims" >> release.txt
+          echo "\`\`\`" >> release.txt
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ env.WORKING_DIR }}/build/*.par.gz
+          token: ${{ env.WASMCLOUD_PAT }}
+          body_path: release.txt
+          prerelease: false
+          draft: false
+
+  artifact_release:
+    needs: [set_variables, assemble_provider_archive]
+    runs-on: ubuntu-20.04
+    env:
+      WASH_SUBJECT_KEY: ${{ secrets[needs.set_variables.outputs.subject_key_output] }}
+      WORKING_DIR: ${{ needs.set_variables.outputs.working_dir_output }}
+      FEATURE_NAME: ${{ needs.set_variables.outputs.feature_name_output }}
+      PROVIDER_VERSION: ${{ needs.set_variables.outputs.provider_version_output }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: wasmcloud/common-actions/install-wash@main
+      - name: Download Provider Archive
+        uses: actions/download-artifact@v3
+        with:
+          name: provider-archive
+          path: ${{ env.FEATURE_NAME }}_provider/build
+      - name: Convert Repo Name to Lowercase # OCI Bug requirement - I prefer using Captitalized TLD's for visualization purposes
+        run: |
+          echo "REPO_LOWER=$(echo ${{ github.REPOSITORY }} | tr 'A-Z' 'a-z')" >> $GITHUB_ENV
+      - name: Push Provider Archive to GHCR
+        env:
+          WASH_REG_USER: ${{ github.repository_owner }}
+          WASH_REG_PASSWORD: ${{ env.WASMCLOUD_PAT }}
+        run: |
+          wash reg push ghcr.io/${{ env.REPO_LOWER }}/${{ env.FEATURE_NAME }}/${{ env.FEATURE_NAME }}_provider:${{ env.PROVIDER_VERSION }} ${{ env.FEATURE_NAME }}_provider/build/${{ env.FEATURE_NAME }}_provider.par.gz -a org.opencontainers.image.source=https://github.com/${{ github.REPOSITORY }} --allow-latest
