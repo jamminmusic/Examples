@@ -31,13 +31,13 @@ watch_path = ["src", "public"]
 [web.resource]
 
 # CSS style file
-style = []
+style = ["tailwind/tailwind.css"]
 
 # Javascript code file
-script = ["tailwind/tailwind.css"]
+script = ["tailwind/tailwind.config.js"]
 
 [web.resource.dev]
 
 # Javascript code file
 # serve: [dev-server] only
-script = ["tailwind/tailwind.config.js"]
+script = []
