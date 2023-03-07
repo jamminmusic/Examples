@@ -1,0 +1,4 @@
+{
+    "SUBSCRIPTION": "oauth2.login.*",
+    "MESSAGE_COUNT": "2",
+}

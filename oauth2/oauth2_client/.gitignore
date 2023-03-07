@@ -1,0 +1,7 @@
+/dist/
+/target/
+*.pem
+*.env
+Cargo.lock
+**/*.rs.bk
+*.lsp.log
