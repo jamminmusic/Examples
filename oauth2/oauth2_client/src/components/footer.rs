@@ -10,10 +10,6 @@ pub fn FooterNavbar(cx: Scope) -> Element {
             ul {
             Link { to: "/", "Home"}
             br {}
-            Link { to: "/jammin", "Top Songs"}
-            br {}
-            Link { to: "/timeline", "Song Timeline"}
-            br {}
             Link { to: "/profile", "Profile Page"}
         }
     })
