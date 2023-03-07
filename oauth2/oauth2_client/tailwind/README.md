@@ -1,5 +1,7 @@
 # Tailwind CSS
 
+BELOW MAY NOT BE NECESSARY - LOOK AT TAILWIND IMPLEMENTATION WITH DIOXUS HERE: <https://github.com/mrxiaozhuox/dioxus-starter>
+
 General install instructions here: <https://crates.io/crates/tailwindcss-to-rust>
 
 Caveats:
