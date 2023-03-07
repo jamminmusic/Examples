@@ -21,13 +21,6 @@ struct AuthStatus {
     provider: Option<String>,
     // Defined by specific login button press
     flow: Option<String>,
-    // Generated when clicking login to sync auth messages
-    client_id: Option<String>,
-    auth_url: Option<Url>,
-    pkce_verifier: Option<String>,
-    code: Option<String>,
-    token: Option<String>,
-    state: Option<String>,
 }
 
 pub fn App(cx: Scope) -> Element {
