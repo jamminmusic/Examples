@@ -1,0 +1,163 @@
+version: "3.7"
+
+networks:
+  proxy-network:
+    name: proxy-network
+
+services:
+  caddy:
+    image: ghcr.io/jamminmusic/containers/caddy-devcontainer:latest
+    restart: unless-stopped
+    container_name: caddy
+    hostname: caddy
+    environment:
+      GCP_PROJECT: ${GCE_PROJECT_ID}
+      GOOGLE_APPLICATION_CREDENTIALS: ${GCE_SERVICE_ACCOUNT_FILE_PATH}
+    networks:
+      - proxy-network
+    depends_on:
+      # wait for tailscale to boot
+      # to communicate to it using the tailscaled.sock
+      - tailscale
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./caddy/application_default_credentials.json:/etc/caddy/application_default_credentials.json:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+      - ./tailscale/tmp/tailscaled.sock:/var/run/tailscale/tailscaled.sock # tailscale creates its socket on /tmp, so we'll kidnap from there to expose to caddy
+
+  tailscale:
+    container_name: tailscaled
+    image: tailscale/tailscale
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - /dev/net/tun:/dev/net/tun
+      - ./tailscale/varlib:/var/lib
+      - ./tailscale/tmp:/tmp
+    environment:
+      # Need to change state folder so can run separate instances in container and on host: <https://forum.tailscale.com/t/is-it-possible-to-run-tailscale-both-in-docker-containers-and-on-the-host/3042>
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_AUTH_KEY: ${TS_AUTH}
+
+  wash:
+    image: ghcr.io/jamminmusic/containers/wash-devcontainer:latest
+    container_name: wasmcloud
+    depends_on:
+      - caddy
+      - nats
+    environment:
+      LC_ALL: en_US.UTF-8
+      RUST_LOG: debug,hyper=info
+      WASMCLOUD_RPC_HOST: nats
+      WASMCLOUD_CTL_HOST: nats
+      WASMCLOUD_PROV_RPC_HOST: nats
+      WASMCLOUD_CLUSTER_SEED: ${WASMCLOUD_CLUSTER_SEED}
+      WASMCLOUD_VERSION: ${WASMCLOUD_VERSION}
+      HOST_app: ${HOST_APP}
+      OCI_REGISTRY: ${OCI_REGISTRY}
+      OCI_REGISTRY_USER: ${OCI_USERNAME}
+      OCI_REGISTRY_PASSWORD: ${OCI_PASSWORD}
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_ENDPOINT: https://0.0.0.0:55681
+    networks:
+      - proxy-network
+    ports:
+      - "4000:4000" # washboard
+      - "8443:8443" # httpserver HTTPS port
+      - "8080:8080"
+    volumes:
+      - ./wadm:/etc/wadm:ro
+    command: "wash up"
+
+  vault:
+    image: hashicorp/vault:1.12
+    depends_on:
+      - caddy
+    container_name: vault
+    restart: on-failure:10
+    networks:
+      - proxy-network
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_ADDR: 'http://0.0.0.0:8200'
+      VAULT_TOKEN: 00000000-0000-0000-0000-000000000000
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      retries: 5
+    command: server -dev -dev-root-token-id="00000000-0000-0000-0000-000000000000"
+
+  # Redis currently needed for wadm
+  redis:
+    image: redis:7.0.8
+    depends_on:
+      - caddy
+    container_name: redis
+    networks:
+      - proxy-network
+    ports:
+      - "6379:6379"
+      - "8205:8200"
+
+  nats:
+    image: nats:2.8.4-alpine
+    depends_on:
+      - caddy
+    container_name: nats
+    networks:
+      - proxy-network
+    ports:
+      - "8222:8222" # 8222 is an HTTP management port for information reporting.
+      - "4222:4222" # 4222 is for clients.
+      - "6222:6222" # 6222 is a routing port for clustering.
+    command: [ "-js" ]
+
+  wadm:
+    depends_on:
+      - nats
+      - redis
+      - caddy
+      - wash
+    image: wasmcloud.azurecr.io/wadm:0.3.1
+    container_name: wadm
+    environment:
+      - WADM_NATS_HOST=nats
+      - WADM_REDIS_HOST=redis
+      - LOG_LEVEL=:debug
+    networks:
+      - proxy-network
+
+  grafana:
+    image: grafana/grafana:8.1.2
+    container_name: grafana
+    ports:
+      - 3000:3000
+    volumes:
+      - ./tracing/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    networks:
+      - proxy-network
+    depends_on:
+      - tempo
+  tempo:
+    image: grafana/tempo:1.1.0
+    container_name: tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tracing/tempo.yaml:/etc/tempo.yaml
+    ports:
+      - 9000:9000 # tempo
+      - 55681:55681 # otlp http
+    networks:
+      - proxy-network
