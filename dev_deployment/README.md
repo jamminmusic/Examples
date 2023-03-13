@@ -1,12 +1,28 @@
-# Dev Env WADM Deployment
+# Setup
 
-The purpose of this example was to test if it is possible to deploy wadm in a dev container env. IT WAS! WOOOO
+Can use an A record and CNAMES to point to tailscale IP.
 
-## Setup
+Lets Encrypt:
+<https://letsencrypt.org/getting-started/>
 
-For local dev will be leveraging router for dns bindings, but there is potential to use dnsmasq if configured correctly.
+Cert Bot:
+<https://certbot.eff.org/>
 
-e.g.:
+GCloud Provider:
+<https://go-acme.github.io/lego/dns/gcloud/>
 
-- on linux requires dnsmasq with entry like `address=/.jammin.dev/127.0.0.1` in /etc/dnsmasq.conf
-- then add or uncomment `name_servers=127.0.0.1` in /etc/resolvconf.conf <https://manpages.ubuntu.com/manpages/trusty/man5/resolvconf.conf.5.html>
+Docker Compose External Network Docs:
+<https://docs.docker.com/compose/compose-file/#external>
+
+Docker Compose with Caddy and Tailscale:
+<https://www.reddit.com/r/Tailscale/comments/104y6nq/docker_tailscale_and_caddy_with_https_a_love_story/>
+
+- `docker exec tailscaled tailscale --socket /tmp/tailscaled.sock cert <the server domain name>`
+
+## Resources
+
+- <https://www.reddit.com/r/Tailscale/comments/104y6nq/docker_tailscale_and_caddy_with_https_a_love_story/>
+- <https://forum.tailscale.com/t/is-it-possible-to-run-tailscale-both-in-docker-containers-and-on-the-host/3042>
+- <https://www.cloudflare.com/products/tunnel/>
+- <https://www.reddit.com/r/Tailscale/comments/yuczp2/running_two_instances_of_tailscale_simultaneously/>
+- <https://github.com/caddy-dns/googleclouddns>

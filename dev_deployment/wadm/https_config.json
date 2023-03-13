@@ -1,8 +1,9 @@
 {
     "address": "0.0.0.0:8443",
     "tls": {
-        "cert_file": "/etc/certs/jammin.dev+1.pem",
-        "priv_key_file": "/etc/certs/jammin.dev+1-key.pem"
+        // CAN I USE LETSENCRYPT HERE?
+        "cert_file": "",
+        "priv_key_file": ""
     },
     "cors": {
         "allowed_origins": [],

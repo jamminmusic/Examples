@@ -28,25 +28,24 @@ spec:
                   app: oauth2
         - type: linkdef
           properties:
-            target: jammin_messaging_provider
+            target: messaging_provider
             values:
-              SUBSCRIPTION: oauth2.login.*
-              MESSAGE_COUNT: 2
+              SUBSCRIPTION: "oauth2.login.*"
         - type: linkdef
           properties:
             target: httpclient_provider
             values:
-              port: 8080
+              port: "8080"
         - type: linkdef
           properties:
             target: vault_provider
             values:
-              token: root
+              token: "00000000-0000-0000-0000-000000000000"
         - type: linkdef
           properties:
             target: redis_provider
             values:
-              URL: redis://127.0.0.1:6379
+              URL: "redis://127.0.0.1:6379"
 
     - name: apigw_router
       type: actor
@@ -64,19 +63,25 @@ spec:
           properties:
             target: httpserver_provider
             values:
-              port: 8080
+              port: "8080"
 
-    - name: jammin_messaging_provider
+    ##################################################
+    ## PLACEHOLDER TO TRY TO DEPLOY DIOXUS WITH WADM
+    # - name: pwa
+    #   type: actor - SHOULD THERE BE ANOTHER TPYE?
+    ###################################################
+
+    - name: messaging_provider
       type: capability
       properties:
-        image: ghcr.io/jamminmusic/features/jammin_messaging/jammin_messaging_provider:dev
-        contract: jammin:interfaces:messaging
+        image: wasmcloud.azurecr.io/nats_messaging:0.15.0
+        contract: wasmcloud:messaging
       traits:
         - type: spreadscaler
           properties:
             replicas: 1
             spread:
-              - name: jammin_messaging_provider_spread
+              - name: messaging_provider_spread
                 requirements:
                   app: oauth2
 

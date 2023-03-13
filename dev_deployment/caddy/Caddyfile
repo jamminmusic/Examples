@@ -1,0 +1,64 @@
+# Using Snippets: <https://caddyserver.com/docs/caddyfile/concepts#snippets>
+# Subdomnain handling: <https://caddyserver.com/docs/caddyfile/patterns#redirect-www-subdomain>
+# Directives: <https://caddyserver.com/docs/caddyfile/directives>
+# Caddyfile and Tailscale TLS: <https://tailscale.com/kb/1190/caddy-certificates/#provide-non-root-users-with-access-to-fetch-certificate
+
+*.jamminmusic.dev {
+	tls {
+        dns googleclouddns {
+            gcp_project {$GCP_PROJECT}
+        }
+    }
+
+	@wash host wash.jamminmusic.dev
+	handle @wash {
+		reverse_proxy wash:4000
+	}
+	
+    # Placeholder for Dioxus PWA
+    @www host www.jamminmusic.dev
+	handle @www {
+		redir pwa:8080
+	}
+    @pwa host jamminmusic.dev
+	handle @pwa {
+		reverse_proxy pwa:8080
+	}
+
+    # No web UI yet
+    @wadm host wadm.jamminmusic.dev
+	handle @wash {
+		reverse_proxy wadm:4000
+	}
+
+    # Not installed yet
+	@sdb host sdb.jamminmusic.dev
+	handle @sdb {
+		reverse_proxy sdb:7777
+	}
+
+    @vault host vault.jamminmusic.dev
+	handle @vault {
+		reverse_proxy vault:8201
+	}
+
+	@redis host redis.jamminmusic.dev
+	handle @redis {
+		reverse_proxy redis:8205
+	}
+
+    @nats host nats.jamminmusic.dev
+	handle @nats {
+		reverse_proxy nats:8222
+	}
+
+	@grafana host grafana.jamminmusic.dev
+	handle @grafana {
+		reverse_proxy grafana:3000
+	}
+
+    @tempo host tempo.jamminmusic.dev
+	handle @tempo {
+		reverse_proxy tempo:9000
+	}
+}
